@@ -1,0 +1,73 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no">
+<meta name="theme-color" content="#101827">
+<title>Scanner QR Peminjaman</title>
+<script src="https://unpkg.com/html5-qrcode@2.3.8/html5-qrcode.min.js"></script>
+<style>
+*{box-sizing:border-box}body{margin:0;background:#101827;color:#f8fafc;font:16px system-ui,Arial,sans-serif}
+main{max-width:620px;margin:auto;padding:18px}h1{font-size:23px;margin:8px 0}
+p{color:#cbd5e1;line-height:1.5}.panel{background:#1e293b;border:1px solid #334155;border-radius:16px;padding:16px}
+#reader{width:100%;margin:14px auto;overflow:hidden;border-radius:12px;background:#020617}
+button{width:100%;padding:14px;border:0;border-radius:10px;background:#16a34a;color:white;font-size:16px;font-weight:700}
+#status{padding:12px;border-radius:10px;background:#334155;margin:12px 0;line-height:1.4}
+.small{font-size:13px;color:#94a3b8}
+</style>
+</head>
+<body>
+<main>
+ <div class="panel">
+  <h1>📷 Scanner QR Peminjaman</h1>
+  <p>Arahkan kamera belakang HP ke QR Code. Pemindaian berjalan otomatis, tanpa mengambil foto.</p>
+  <div id="status">Menyiapkan kamera...</div>
+  <div id="reader"></div>
+  <button id="retry" type="button" hidden onclick="startCamera()">Aktifkan / Coba Lagi</button>
+  <p class="small">Jika diminta, pilih <b>Izinkan</b> untuk akses kamera pada situs scanner ini. Gunakan Chrome dan buka halaman melalui HTTPS.</p>
+ </div>
+</main>
+<script>
+const params=new URLSearchParams(location.search);
+const parentOrigin=params.get('parentOrigin')||'*';
+let scanner=null,starting=false,done=false;
+function status(t){document.getElementById('status').textContent=t;}
+async function startCamera(){
+ if(starting||done)return;
+ starting=true;
+ document.getElementById('retry').hidden=true;
+ try{
+  if(!window.isSecureContext)throw new Error('Halaman scanner harus dibuka melalui HTTPS.');
+  if(!navigator.mediaDevices||!navigator.mediaDevices.getUserMedia)throw new Error('Browser tidak menyediakan akses kamera. Gunakan Chrome Android versi terbaru.');
+  if(scanner){try{await scanner.stop();}catch(e){}try{scanner.clear();}catch(e){}scanner=null;}
+  scanner=new Html5Qrcode('reader',{verbose:false});
+  status('Meminta izin kamera belakang...');
+  const config={fps:12,qrbox:(w,h)=>{const side=Math.floor(Math.min(w,h)*0.78);return {width:side,height:side};},aspectRatio:1.0};
+  await scanner.start({facingMode:'environment'},config,onDecoded,onDecodeError);
+  status('Kamera aktif. Arahkan QR ke kotak pemindaian.');
+ }catch(e){
+  console.error(e);
+  status('Kamera gagal dibuka: '+(e&&e.message?e.message:String(e))+' Pastikan izin kamera situs ini di Chrome = Izinkan.');
+  document.getElementById('retry').hidden=false;
+ }finally{starting=false;}
+}
+function onDecoded(text){
+ if(done||!text)return;
+ done=true;
+ status('QR terbaca. Mengirim hasil ke aplikasi...');
+ try{if(scanner)scanner.stop().catch(()=>{});}catch(e){}
+ if(window.opener&&!window.opener.closed){
+  window.opener.postMessage({type:'YAIM_QR_SCAN_RESULT',text:String(text)},parentOrigin);
+  status('Berhasil dikirim. Kembali ke tab aplikasi peminjaman.');
+  setTimeout(()=>window.close(),700);
+ }else{
+  done=false;
+  status('Tab aplikasi asal tidak ditemukan. Tutup tab ini, buka scanner dari menu aplikasi, lalu coba lagi.');
+  document.getElementById('retry').hidden=false;
+ }
+}
+function onDecodeError(_error){/* QR belum terbaca; teruskan pemindaian otomatis. */}
+window.addEventListener('load',startCamera);
+</script>
+</body>
+</html>
